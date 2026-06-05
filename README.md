@@ -1,3 +1,4 @@
+[README.md](https://github.com/user-attachments/files/28653224/README.md)
 # 🩺 MediAgenda
 
 Sistema web para gerenciamento e agendamento de consultas médicas desenvolvido em PHP durante as aulas de Programação Web.
@@ -111,11 +112,9 @@ login.php
 
 # 👨‍💻 Integrantes do Grupo
 
-- Nome Completo 1
-- Nome Completo 2
-- Nome Completo 3
-- Nome Completo 4
-- Nome Completo 5
+- Pedro de Souza Oliveira
+- Cassio Eduardo Madeira
+- João Eduardo Souza
 
 ---
 
