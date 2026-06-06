@@ -1,8 +1,4 @@
 <?php
-/* ============================================================
-   cadastro_medicos.php - Cadastro de Médicos
-   ------------------------------------------------------------
-============================================================ */
 session_start();
 require_once("conexao.php"); // importar o conexao.php para esta página
 
@@ -29,7 +25,7 @@ $operadorNome  = $nomeUsuario;
 $operadorEmail = $emailUsuario;
 
 /* ============================================================
-   PROCESSAMENTO DE AÇÕES (POST) - APENAS PROBLEMA 1 (MÉDICOS)
+   PROCESSAMENTO DE AÇÕES (POST) - CRUD REAL
 ============================================================ */
 $msgSucesso = "";
 $msgErro = "";
@@ -45,13 +41,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email         = mysqli_real_escape_string($conexao_bd, $_POST['email']);
         $status        = mysqli_real_escape_string($conexao_bd, $_POST['status']);
         
-        // CORREÇÃO DO ERRO: Verifica se o CRM já existe no banco antes de tentar inserir
+        // NOVO: Verifica se o CRM já existe no banco antes de tentar inserir
         $checkCrm = "SELECT id FROM medicos WHERE crm = '$crm'";
         $resCheck = mysqli_query($conexao_bd, $checkCrm);
         
         if (mysqli_num_rows($resCheck) > 0) {
-            $msgErro = "Este CRM já está cadastrado para outro médico! Tente um número diferente.";
+            $msgErro = "Este CRM já está cadastrado para outro médico!";
         } else {
+            // Se não existir, faz o insert normal
             $sql = "INSERT INTO medicos (nome, crm, especialidade_id, telefone, email, status) 
                     VALUES ('$nome', '$crm', $especialidade, '$telefone', '$email', '$status')";
             
@@ -71,50 +68,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email         = mysqli_real_escape_string($conexao_bd, $_POST['email']);
         $status        = mysqli_real_escape_string($conexao_bd, $_POST['status']);
         
-        // CORREÇÃO: Garante que na edição o CRM alterado não colida com outro médico
-        $checkCrm = "SELECT id FROM medicos WHERE crm = '$crm' AND id != $id";
-        $resCheck = mysqli_query($conexao_bd, $checkCrm);
-        
-        if (mysqli_num_rows($resCheck) > 0) {
-            $msgErro = "Não foi possível atualizar. O CRM digitado já pertence a outro profissional.";
+        $sql = "UPDATE medicos SET 
+                    nome = '$nome', 
+                    crm = '$crm', 
+                    especialidade_id = $especialidade, 
+                    telefone = '$telefone', 
+                    email = '$email', 
+                    status = '$status' 
+                WHERE id = $id";
+                
+        if(mysqli_query($conexao_bd, $sql)) {
+            $msgSucesso = "Médico atualizado com sucesso!";
         } else {
-            $sql = "UPDATE medicos SET 
-                        nome = '$nome', 
-                        crm = '$crm', 
-                        especialidade_id = $especialidade, 
-                        telefone = '$telefone', 
-                        email = '$email', 
-                        status = '$status' 
-                    WHERE id = $id";
-                    
-            if(mysqli_query($conexao_bd, $sql)) {
-                $msgSucesso = "Médico updated com sucesso!";
-            } else {
-                $msgErro = "Erro ao atualizar: " . mysqli_error($conexao_bd);
-            }
+            $msgErro = "Erro ao atualizar: " . mysqli_error($conexao_bd);
         }
         
     } elseif ($acao === 'excluir') {
         $id = (int)$_POST['id'];
         
-        // CORREÇÃO: Exclusão lógica (Inativação) para preservar chaves e histórico de agendamentos
+        // Fazendo a inativação/exclusão lógica para não quebrar chaves estrangeiras de agendamentos
         $sql = "UPDATE medicos SET status = 'Inativo' WHERE id = $id";
         
         if(mysqli_query($conexao_bd, $sql)) {
-            $msgSucesso = "O status do médico foi alterado para Inativo com sucesso!";
+            $msgSucesso = "Médico inativado com sucesso!";
         } else {
-            $msgErro = "Erro ao alterar o status: " . mysqli_error($conexao_bd);
+            $msgErro = "Erro ao inativar: " . mysqli_error($conexao_bd);
         }
     }
 }
 
-
+/* ============================================================
+   FILTROS DE BUSCA (Mantidos do seu escopo)
+============================================================ */
 $filtroNome          = trim(isset($_GET['nome'])          ? $_GET['nome']          : '');
 $filtroEspecialidade = trim(isset($_GET['especialidade']) ? $_GET['especialidade'] : '');
 $filtroStatus        = trim(isset($_GET['status'])        ? $_GET['status']        : '');
 
 /* ============================================================
-   BUSCA DINÂMICA DE MÉDICOS (Dados reais puxados da View)
+   BUSCA DINÂMICA DE MÉDICOS (Usando dados reais da View)
 ============================================================ */
 $medicos = array();
 $sql = "SELECT * FROM vw_medicos WHERE 1=1";
@@ -128,7 +119,7 @@ if ($filtroEspecialidade !== '') {
 if ($filtroStatus !== '') {
     $sql .= " AND status = '" . mysqli_real_escape_string($conexao_bd, $filtroStatus) . "'";
 }
-$sql .= " ORDER BY id ASC";
+$sql .= " ORDER BY nome ASC";
 
 $result = mysqli_query($conexao_bd, $sql);
 while ($row = mysqli_fetch_assoc($result)) {
@@ -136,11 +127,14 @@ while ($row = mysqli_fetch_assoc($result)) {
 }
 
 /* ============================================================
-   ESPECIALIDADES DISPONÍVEIS
-   TODO: Substituir por consulta ao banco:
-   $especialidades = buscarEspecialidades();
+   ESPECIALIDADES DISPONÍVEIS (Puxando dinamicamente do banco)
 ============================================================ */
-$especialidades = array('Cardiologia', 'Dermatologia', 'Ginecologia', 'Neurologia', 'Ortopedia', 'Pediatria');
+$especialidades = array();
+$sqlEsp = "SELECT * FROM especialidades ORDER BY nome ASC";
+$resEsp = mysqli_query($conexao_bd, $sqlEsp);
+while ($rowEsp = mysqli_fetch_assoc($resEsp)) {
+    $especialidades[] = $rowEsp;
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -148,10 +142,13 @@ $especialidades = array('Cardiologia', 'Dermatologia', 'Ginecologia', 'Neurologi
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MediAgenda - Cadastro de Médicos</title>
+
     <link rel="icon" type="image/x-icon" href="img/favicon.ico">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    
+
     <style>
         :root {
             --azul-primario: #0d6efd;
@@ -434,12 +431,20 @@ $especialidades = array('Cardiologia', 'Dermatologia', 'Ginecologia', 'Neurologi
 
     <nav class="navbar-topo d-flex align-items-center justify-content-between px-3">
         <div class="d-flex align-items-center gap-2">
-            <button class="btn-sanduiche" id="btnSanduiche" title="Menu"><i class="fa-solid fa-bars"></i></button>
-            <a class="navbar-brand mb-0 d-flex align-items-center" href="principal.php"><i class="fa-solid fa-stethoscope"></i><span>MediAgenda</span></a>
+            <button class="btn-sanduiche" id="btnSanduiche" title="Menu">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <a class="navbar-brand mb-0 d-flex align-items-center" href="principal.php">
+                <i class="fa-solid fa-stethoscope"></i>
+                <span>MediAgenda</span>
+            </a>
         </div>
+
         <div class="dropdown">
             <button class="operador-toggle" type="button" id="dropdownOperador" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="fa-solid fa-circle-user"></i><span class="d-none d-md-inline"><?php echo htmlspecialchars($operadorNome) ?></span><i class="fa-solid fa-chevron-down" style="font-size: 0.75rem;"></i>
+                <i class="fa-solid fa-circle-user"></i>
+                <span class="d-none d-md-inline"><?php echo htmlspecialchars($operadorNome) ?></span>
+                <i class="fa-solid fa-chevron-down" style="font-size: 0.75rem;"></i>
             </button>
             <ul class="dropdown-menu dropdown-menu-end dropdown-menu-operador" aria-labelledby="dropdownOperador">
                 <li><a class="dropdown-item" href="#"><i class="fa-solid fa-user"></i><?php echo htmlspecialchars($operadorNome) ?></a></li>
@@ -453,19 +458,30 @@ $especialidades = array('Cardiologia', 'Dermatologia', 'Ginecologia', 'Neurologi
 
     <aside class="sidebar" id="sidebar">
         <ul class="nav flex-column">
-            <li class="nav-item"><a class="nav-link" href="principal.php"><i class="fa-solid fa-calendar-days"></i> Calendário</a></li>
-            <li class="nav-item"><a class="nav-link" href="cadastro_agendas.php"><i class="fa-solid fa-calendar-plus"></i> Agendamentos</a></li>
-            <li class="nav-item"><a class="nav-link ativo" href="cadastro_medicos.php"><i class="fa-solid fa-user-doctor"></i> Cadastro de Médicos</a></li>
-            <li class="nav-item"><a class="nav-link" href="#"><i class="fa-solid fa-list-check"></i> Cadastro de Especialidades</a></li>
+            <li class="nav-item">
+                <a class="nav-link" href="principal.php"><i class="fa-solid fa-calendar-days"></i> Calendário</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="cadastro_agendas.php"><i class="fa-solid fa-calendar-plus"></i> Agendamentos</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link ativo" href="cadastro_medicos.php"><i class="fa-solid fa-user-doctor"></i> Cadastro de Médicos</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="cadastro_especialidades.php"><i class="fa-solid fa-list-check"></i> Cadastro de Especialidades</a>
+            </li>
         </ul>
     </aside>
 
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
     <main class="conteudo-principal" id="conteudoPrincipal">
+
         <div class="page-header">
             <h2><i class="fa-solid fa-user-doctor"></i> Cadastro de Médicos</h2>
-            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalFormMedico"><i class="fa-solid fa-plus me-1"></i> Novo Médico</button>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalFormMedico">
+                <i class="fa-solid fa-plus me-1"></i> Novo Médico
+            </button>
         </div>
 
         <div class="card-pagina">
@@ -474,14 +490,19 @@ $especialidades = array('Cardiologia', 'Dermatologia', 'Ginecologia', 'Neurologi
                 <div class="row g-3">
                     <div class="col-md-4">
                         <label for="filtroNome">Nome</label>
-                        <input type="text" class="form-control form-control-sm" id="filtroNome" name="nome" placeholder="Nome do médico" value="<?php echo htmlspecialchars($filtroNome) ?>">
+                        <input type="text" class="form-control form-control-sm" id="filtroNome"
+                               name="nome" placeholder="Nome do médico"
+                               value="<?php echo htmlspecialchars($filtroNome) ?>">
                     </div>
                     <div class="col-md-4">
                         <label for="filtroEspecialidade">Especialidade</label>
-                        <select class="form-select" id="filtroEspecialidade" name="especialidade">
+                        <select class="form-select form-select-sm" id="filtroEspecialidade" name="especialidade">
                             <option value="">Todas</option>
                             <?php foreach ($especialidades as $esp): ?>
-                                <option value="<?php echo htmlspecialchars($esp) ?>" <?php echo ($filtroEspecialidade === $esp) ? 'selected' : '' ?>><?php echo htmlspecialchars($esp) ?></option>
+                                <option value="<?php echo htmlspecialchars($esp['nome']) ?>"
+                                    <?php echo ($filtroEspecialidade === $esp['nome']) ? 'selected' : '' ?>>
+                                    <?php echo htmlspecialchars($esp['nome']) ?>
+                                </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -495,8 +516,12 @@ $especialidades = array('Cardiologia', 'Dermatologia', 'Ginecologia', 'Neurologi
                     </div>
                 </div>
                 <div class="d-flex gap-2 mt-3">
-                    <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-magnifying-glass me-1"></i> Filtrar</button>
-                    <a href="cadastro_medicos.php" class="btn btn-outline-secondary btn-sm"><i class="fa-solid fa-xmark me-1"></i> Limpar</a>
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="fa-solid fa-magnifying-glass me-1"></i> Filtrar
+                    </button>
+                    <a href="cadastro_medicos.php" class="btn btn-outline-secondary btn-sm">
+                        <i class="fa-solid fa-xmark me-1"></i> Limpar
+                    </a>
                 </div>
             </form>
         </div>
@@ -504,38 +529,78 @@ $especialidades = array('Cardiologia', 'Dermatologia', 'Ginecologia', 'Neurologi
         <div class="card-pagina">
             <div class="card-titulo d-flex justify-content-between align-items-center">
                 <span><i class="fa-solid fa-table-list"></i> Médicos</span>
-                <span id="contadorRegistros" class="text-muted" style="font-size:0.82rem; font-weight:400;"><?php echo count($medicos) ?> registro(s) encontrado(s)</span>
+                <span id="contadorRegistros" class="text-muted" style="font-size:0.82rem; font-weight:400;">
+                    <?php echo count($medicos) ?> registro(s) encontrado(s)
+                </span>
             </div>
+
             <div class="table-responsive">
                 <table class="tabela-medicos">
                     <thead>
                         <tr>
-                            <th>#</th><th>Nome</th><th>CRM</th><th>Especialidade</th><th>Telefone</th><th>E-mail</th><th>Status</th><th class="text-center">Ações</th>
+                            <th>#</th>
+                            <th>Nome</th>
+                            <th>CRM</th>
+                            <th>Especialidade</th>
+                            <th>Telefone</th>
+                            <th>E-mail</th>
+                            <th>Status</th>
+                            <th class="text-center">Ações</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if (empty($medicos)): ?>
-                            <tr><td colspan="8" class="text-center text-muted py-4"><i class="fa-solid fa-user-xmark me-2"></i>Nenhum médico encontrado.</td></tr>
+                            <tr>
+                                <td colspan="8" class="text-center text-muted py-4">
+                                    <i class="fa-solid fa-user-xmark me-2"></i>Nenhum médico encontrado.
+                                </td>
+                            </tr>
                         <?php else: ?>
                             <?php foreach ($medicos as $med):
-                                $partes   = explode(' ', $med['nome']); $iniciais = '';
+                                // Iniciais para o avatar
+                                $partes   = explode(' ', $med['nome']);
+                                $iniciais = '';
                                 foreach ($partes as $p) {
                                     $letra = ltrim($p, 'Dr. Dra. ');
-                                    if ($letra !== '') { $iniciais .= mb_strtoupper(mb_substr($letra, 0, 1)); if (mb_strlen($iniciais) === 2) break; }
+                                    if ($letra !== '') {
+                                        $iniciais .= mb_strtoupper(mb_substr($letra, 0, 1));
+                                        if (mb_strlen($iniciais) === 2) break;
+                                    }
                                 }
+
                                 $classeBadge = ($med['status'] === 'Ativo') ? 'badge-ativo' : 'badge-inativo';
                             ?>
                             <tr>
                                 <td class="text-muted"><?php echo $med['id'] ?></td>
-                                <td><div class="d-flex align-items-center"><span class="avatar-medico"><?php echo htmlspecialchars($iniciais) ?></span><?php echo htmlspecialchars($med['nome']) ?></div></td>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <span class="avatar-medico"><?php echo htmlspecialchars($iniciais) ?></span>
+                                        <?php echo htmlspecialchars($med['nome']) ?>
+                                    </div>
+                                </td>
                                 <td><?php echo htmlspecialchars($med['crm']) ?></td>
                                 <td><?php echo htmlspecialchars($med['especialidade']) ?></td>
                                 <td><?php echo htmlspecialchars($med['telefone']) ?></td>
                                 <td><?php echo htmlspecialchars($med['email']) ?></td>
                                 <td><span class="badge-status <?php echo $classeBadge ?>"><?php echo htmlspecialchars($med['status']) ?></span></td>
                                 <td class="text-center" style="white-space:nowrap;">
-                                    <button class="btn btn-sm btn-outline-primary py-0 px-2 btn-editar" title="Editar" data-id="<?php echo $med['id'] ?>" data-nome="<?php echo htmlspecialchars($med['nome']) ?>" data-crm="<?php echo htmlspecialchars($med['crm']) ?>" data-especialidade="<?php echo htmlspecialchars($med['especialidade']) ?>" data-telefone="<?php echo htmlspecialchars($med['telefone']) ?>" data-email="<?php echo htmlspecialchars($med['email']) ?>" data-status="<?php echo htmlspecialchars($med['status']) ?>"><i class="fa-solid fa-pen"></i></button>
-                                    <button class="btn btn-sm btn-outline-danger py-0 px-2 btn-excluir" title="Excluir médico" data-id="<?php echo $med['id'] ?>" data-nome="<?php echo htmlspecialchars($med['nome']) ?>"><i class="fa-solid fa-trash"></i></button>
+                                    <button class="btn btn-sm btn-outline-primary py-0 px-2 btn-editar"
+                                            title="Editar"
+                                            data-id="<?php echo $med['id'] ?>"
+                                            data-nome="<?php echo htmlspecialchars($med['nome']) ?>"
+                                            data-crm="<?php echo htmlspecialchars($med['crm']) ?>"
+                                            data-especialidade="<?php echo htmlspecialchars($med['especialidade']) ?>"
+                                            data-telefone="<?php echo htmlspecialchars($med['telefone']) ?>"
+                                            data-email="<?php echo htmlspecialchars($med['email']) ?>"
+                                            data-status="<?php echo htmlspecialchars($med['status']) ?>">
+                                        <i class="fa-solid fa-pen"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger py-0 px-2 btn-excluir"
+                                            title="Excluir médico"
+                                            data-id="<?php echo $med['id'] ?>"
+                                            data-nome="<?php echo htmlspecialchars($med['nome']) ?>">
+                                        <i class="fa-solid fa-trash"></i>
+                                    </button>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
@@ -543,48 +608,64 @@ $especialidades = array('Cardiologia', 'Dermatologia', 'Ginecologia', 'Neurologi
                     </tbody>
                 </table>
             </div>
+
+            <div class="d-flex justify-content-end mt-3">
+                <nav aria-label="Paginação">
+                    <ul class="pagination pagination-sm mb-0">
+                        <li class="page-item disabled"><a class="page-link" href="#">&laquo;</a></li>
+                        <li class="page-item active"><a class="page-link" href="#">1</a></li>
+                        <li class="page-item disabled"><a class="page-link" href="#">&raquo;</a></li>
+                    </ul>
+                </nav>
+            </div>
         </div>
+
     </main>
 
     <div class="modal fade modal-form" id="modalFormMedico" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="modalFormTitulo"><i class="fa-solid fa-user-plus me-2"></i>Novo Médico</h5>
+                    <h5 class="modal-title" id="modalFormTitulo">
+                        <i class="fa-solid fa-user-plus me-2"></i>Novo Médico
+                    </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                 </div>
+
                 <form id="formMedico" method="POST" action="cadastro_medicos.php">
                     <input type="hidden" name="acao" id="formAcao" value="novo">
                     <input type="hidden" name="id"   id="formId"   value="">
+
                     <div class="modal-body">
                         <div class="row g-3">
                             <div class="col-md-8">
                                 <label for="formNome">Nome completo <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="formNome" name="nome" placeholder="Ex: Dr. Carlos Lima" required>
+                                <input type="text" class="form-control" id="formNome" name="nome"
+                                       placeholder="Ex: Dr. Carlos Lima" required>
                             </div>
                             <div class="col-md-4">
                                 <label for="formCrm">CRM <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="formCrm" name="crm" placeholder="Ex: CRM/SP 12345" required>
+                                <input type="text" class="form-control" id="formCrm" name="crm"
+                                       placeholder="Ex: CRM/SP 12345" required>
                             </div>
                             <div class="col-md-6">
                                 <label for="formEspecialidade">Especialidade <span class="text-danger">*</span></label>
                                 <select class="form-select" id="formEspecialidade" name="especialidade" required>
                                     <option value="">Selecione...</option>
-                                    <option value="1">Cardiologia</option>
-                                    <option value="2">Dermatologia</option>
-                                    <option value="3">Ginecologia</option>
-                                    <option value="4">Neurologia</option>
-                                    <option value="5">Ortopedia</option>
-                                    <option value="6">Pediatria</option>
+                                    <?php foreach ($especialidades as $esp): ?>
+                                        <option value="<?php echo $esp['id'] ?>"><?php echo htmlspecialchars($esp['nome']) ?></option>
+                                    <?php endforeach; ?>
                                 </select>
                             </div>
                             <div class="col-md-6">
                                 <label for="formTelefone">Telefone</label>
-                                <input type="text" class="form-control" id="formTelefone" name="telefone" placeholder="(00) 00000-0000">
+                                <input type="text" class="form-control" id="formTelefone" name="telefone"
+                                       placeholder="(00) 00000-0000">
                             </div>
                             <div class="col-md-8">
                                 <label for="formEmail">E-mail</label>
-                                <input type="email" class="form-control" id="formEmail" name="email" placeholder="medico@clinica.com">
+                                <input type="email" class="form-control" id="formEmail" name="email"
+                                       placeholder="medico@clinica.com">
                             </div>
                             <div class="col-md-4">
                                 <label for="formStatus">Status</label>
@@ -595,9 +676,12 @@ $especialidades = array('Cardiologia', 'Dermatologia', 'Ginecologia', 'Neurologi
                             </div>
                         </div>
                     </div>
+
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
-                        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk me-1"></i> Salvar</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fa-solid fa-floppy-disk me-1"></i> Salvar
+                        </button>
                     </div>
                 </form>
             </div>
@@ -609,24 +693,50 @@ $especialidades = array('Cardiologia', 'Dermatologia', 'Ginecologia', 'Neurologi
         <input type="hidden" name="id" id="excluirId" value="">
     </form>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"
             integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
     <script>
+        // ==================================================
+        // TOGGLE DA SIDEBAR (responsivo original)
+        // ==================================================
         var btnSanduiche      = document.getElementById('btnSanduiche');
         var sidebar           = document.getElementById('sidebar');
         var conteudoPrincipal = document.getElementById('conteudoPrincipal');
         var sidebarOverlay    = document.getElementById('sidebarOverlay');
-        btnSanduiche.addEventListener('click', function() { if (window.innerWidth <= 991.98) { sidebar.classList.toggle('aberta'); sidebarOverlay.classList.toggle('ativo'); } else { sidebar.classList.toggle('oculta'); conteudoPrincipal.classList.toggle('expandido'); } });
-        sidebarOverlay.addEventListener('click', function() { sidebar.classList.remove('aberta'); sidebarOverlay.classList.remove('ativo'); });
 
+        btnSanduiche.addEventListener('click', function() {
+            if (window.innerWidth <= 991.98) {
+                sidebar.classList.toggle('aberta');
+                sidebarOverlay.classList.toggle('ativo');
+            } else {
+                sidebar.classList.toggle('oculta');
+                conteudoPrincipal.classList.toggle('expandido');
+            }
+        });
+        sidebarOverlay.addEventListener('click', function() {
+            sidebar.classList.remove('aberta');
+            sidebarOverlay.classList.remove('ativo');
+        });
+        window.addEventListener('resize', function() {
+            if (window.innerWidth > 991.98) {
+                sidebar.classList.remove('aberta');
+                sidebarOverlay.classList.remove('ativo');
+            }
+        });
+
+        // ==================================================
+        // INSTÂNCIA ÚNICA DO MODAL E FLAG DE MODO
+        // ==================================================
         var modalFormMedicoEl = document.getElementById('modalFormMedico');
         var modalFormMedico   = new bootstrap.Modal(modalFormMedicoEl);
         var modoEdicao        = false;
 
         modalFormMedicoEl.addEventListener('show.bs.modal', function() {
             if (!modoEdicao) {
-                document.getElementById('modalFormTitulo').innerHTML = '<i class="fa-solid fa-user-plus me-2"></i>Novo Médico';
+                document.getElementById('modalFormTitulo').innerHTML =
+                    '<i class="fa-solid fa-user-plus me-2"></i>Novo Médico';
                 document.getElementById('formAcao').value = 'novo';
                 document.getElementById('formId').value   = '';
                 document.getElementById('formMedico').reset();
@@ -634,13 +744,17 @@ $especialidades = array('Cardiologia', 'Dermatologia', 'Ginecologia', 'Neurologi
             modoEdicao = false;
         });
 
+        // ==================================================
+        // EVENT DELEGATION — Editar e Excluir original adaptado para o banco
+        // ==================================================
         document.querySelector('.tabela-medicos').addEventListener('click', function(e) {
             var btnEditar  = e.target.closest('.btn-editar');
             var btnExcluir = e.target.closest('.btn-excluir');
 
             if (btnEditar) {
                 modoEdicao = true;
-                document.getElementById('modalFormTitulo').innerHTML = '<i class="fa-solid fa-pen me-2"></i>Editar Médico';
+                document.getElementById('modalFormTitulo').innerHTML =
+                    '<i class="fa-solid fa-pen me-2"></i>Editar Médico';
                 document.getElementById('formAcao').value           = 'editar';
                 document.getElementById('formId').value             = btnEditar.dataset.id;
                 document.getElementById('formNome').value           = btnEditar.dataset.nome;
@@ -651,20 +765,23 @@ $especialidades = array('Cardiologia', 'Dermatologia', 'Ginecologia', 'Neurologi
 
                 var sel = document.getElementById('formEspecialidade');
                 for (var i = 0; i < sel.options.length; i++) {
-                    if (sel.options[i].text === btnEditar.dataset.especialidade) { sel.selectedIndex = i; break; }
+                    if (sel.options[i].text === btnEditar.dataset.especialidade) {
+                        sel.selectedIndex = i;
+                        break;
+                    }
                 }
                 modalFormMedico.show();
             }
 
             if (btnExcluir) {
                 Swal.fire({
-                    title: 'Inativar médico?',
-                    html: 'Deseja alterar o status do cadastro de <strong>' + btnExcluir.dataset.nome + '</strong> para Inativo?',
+                    title: 'Excluir médico?',
+                    html: 'Deseja excluir o cadastro de <strong>' + btnExcluir.dataset.nome + '</strong>?',
                     icon: 'warning',
                     showCancelButton: true,
                     confirmButtonColor: '#dc3545',
                     cancelButtonColor:  '#6c757d',
-                    confirmButtonText:  'Sim, inativar',
+                    confirmButtonText:  'Sim, excluir',
                     cancelButtonText:   'Voltar'
                 }).then(function(result) {
                     if (result.isConfirmed) {
@@ -675,11 +792,27 @@ $especialidades = array('Cardiologia', 'Dermatologia', 'Ginecologia', 'Neurologi
             }
         });
 
+        // ==================================================
+        // ALERTAS DO SWEETALERT COMPATÍVEIS COM O POST PHP
+        // ==================================================
         <?php if($msgSucesso !== ""): ?>
-            Swal.fire({ icon: 'success', title: 'Salvo!', text: '<?php echo $msgSucesso; ?>', confirmButtonColor: '#0d6efd', timer: 2000, showConfirmButton: false });
+            Swal.fire({
+                icon: 'success',
+                title: 'Salvo!',
+                text: '<?php echo $msgSucesso; ?>',
+                confirmButtonColor: '#0d6efd',
+                timer: 2000,
+                showConfirmButton: false
+            });
         <?php endif; ?>
+
         <?php if($msgErro !== ""): ?>
-            Swal.fire({ icon: 'error', title: 'Erro!', text: '<?php echo $msgErro; ?>', confirmButtonColor: '#0d6efd' });
+            Swal.fire({
+                icon: 'error',
+                title: 'Erro!',
+                text: '<?php echo $msgErro; ?>',
+                confirmButtonColor: '#0d6efd'
+            });
         <?php endif; ?>
     </script>
 </body>
